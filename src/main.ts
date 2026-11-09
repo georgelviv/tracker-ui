@@ -100,6 +100,7 @@ function ensureMap() {
   });
   map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
   darkScheme.addEventListener('change', () => map?.setStyle(mapStyle()));
+  applyMapPadding();
   return map;
 }
 
@@ -190,7 +191,120 @@ function render() {
   if (f) gmaps.href = `https://www.google.com/maps?q=${f.lat},${f.lon}`;
   else gmaps.removeAttribute('href');
 
+  renderNet(f);
+  renderGps(f);
   updateMarker(f, fresh);
+}
+
+// ---------- detail sections ----------
+
+type Row = [label: string, value: string | undefined];
+
+function setRows(id: string, rows: Row[]) {
+  const dl = $(id);
+  dl.replaceChildren(
+    ...rows
+      .filter(([, v]) => v != null && v !== '')
+      .flatMap(([k, v]) => {
+        const dt = document.createElement('dt');
+        const dd = document.createElement('dd');
+        dt.textContent = k;
+        dd.textContent = v!;
+        return [dt, dd];
+      }),
+  );
+}
+
+function wifiQuality(rssi: number): string {
+  if (rssi >= -55) return 'Excellent';
+  if (rssi >= -67) return 'Good';
+  if (rssi >= -75) return 'Fair';
+  return 'Weak';
+}
+
+function formatDuration(s: number): string {
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (d) return `${d} d ${h} h`;
+  if (h) return `${h} h ${m} min`;
+  return `${m} min`;
+}
+
+const LINK_NAMES: Record<string, string> = { wifi: 'Wi-Fi', lte: 'LTE' };
+
+function renderNet(f?: Fix) {
+  const net = f?.net;
+  const type = LINK_NAMES[net?.type ?? f?.via ?? ''] ?? f?.via ?? '–';
+  const quality = net?.rssi != null ? wifiQuality(net.rssi) : undefined;
+  $('net-summary').textContent = f ? [type, net?.name, quality].filter(Boolean).join(' · ') : '–';
+  setRows('net-rows', [
+    ['Type', f ? type : undefined],
+    ['Network', net?.name],
+    ['Signal', net?.rssi != null ? `${quality} (${net.rssi} dBm)` : undefined],
+    ['Channel', net?.channel != null ? String(net.channel) : undefined],
+    ['Local IP', net?.ip],
+    ['Last upload', f?.receivedAt ? formatAgo(f.receivedAt) : undefined],
+    ['Uptime', f?.device?.uptime != null ? formatDuration(f.device.uptime) : undefined],
+    ['Firmware', f?.device?.fw],
+  ]);
+}
+
+const FIX_QUALITY: Record<number, string> = { 1: 'GPS', 2: 'DGPS', 4: 'RTK', 5: 'RTK float', 6: 'Estimated' };
+const CONSTELLATIONS: [key: 'gps' | 'glonass' | 'beidou' | 'galileo', name: string][] = [
+  ['gps', 'GPS'],
+  ['beidou', 'BeiDou'],
+  ['glonass', 'GLONASS'],
+  ['galileo', 'Galileo'],
+];
+
+function compass(deg: number): string {
+  return ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(deg / 45) % 8];
+}
+
+function renderGps(f?: Fix) {
+  const g = f?.gps;
+  const fixType = g?.fixType === 3 ? '3D fix' : g?.fixType === 2 ? '2D fix' : g ? 'No fix' : undefined;
+  const view = g?.inView ?? {};
+  const inView = CONSTELLATIONS.reduce((n, [k]) => n + (view[k] ?? 0), 0);
+  const sats = f?.sats != null ? (g ? `${f.sats} of ${inView}` : String(f.sats)) : undefined;
+
+  $('gps-summary').textContent = f
+    ? [fixType, sats && `${sats} satellites`].filter(Boolean).join(' · ') || '–'
+    : '–';
+  const dop = (v?: number) => (v != null && v > 0 ? v.toFixed(1) : '–');
+  setRows('gps-rows', [
+    ['Fix', fixType && [fixType, FIX_QUALITY[g?.quality ?? -1]].filter(Boolean).join(', ')],
+    ['Satellites used', f?.sats != null ? String(f.sats) : undefined],
+    [
+      'In view',
+      g?.inView
+        ? CONSTELLATIONS.filter(([k]) => view[k]).map(([k, name]) => `${name} ${view[k]}`).join(' · ') || '0'
+        : undefined,
+    ],
+    ['Signal', g?.snrAvg ? `avg ${Math.round(g.snrAvg)} · best ${g.snrMax} dB-Hz` : undefined],
+    ['DOP (P / H / V)', g ? `${dop(g.pdop)} / ${dop(f?.hdop)} / ${dop(g.vdop)}` : undefined],
+    ['Heading', f?.course != null && (f.speed ?? 0) >= 2 ? `${Math.round(f.course)}° ${compass(f.course)}` : undefined],
+    ['Geoid separation', g?.geoid ? `${g.geoid.toFixed(1)} m` : undefined],
+    ['GPS time', f ? new Date(f.ts).toLocaleString() : undefined],
+  ]);
+}
+
+// Remember which sections are expanded (per browser).
+for (const id of ['net-details', 'gps-details']) {
+  const el = $<HTMLDetailsElement>(id);
+  try {
+    el.open = localStorage.getItem(id) === 'open';
+  } catch {
+    /* storage blocked */
+  }
+  el.addEventListener('toggle', () => {
+    try {
+      localStorage.setItem(id, el.open ? 'open' : 'closed');
+    } catch {
+      /* storage blocked */
+    }
+  });
 }
 
 function updateMarker(f: Fix | undefined, fresh: Freshness) {
@@ -242,11 +356,19 @@ function formatAgo(ts: number): string {
   return new Date(ts).toLocaleString();
 }
 
-// On phones the panel is a bottom sheet; lift the map's bottom controls
-// (attribution) above it.
+// On phones the panel is a bottom sheet: lift the map's bottom controls
+// (attribution) above it, and centre the map in the area left visible.
+const isSheet = window.matchMedia('(max-width: 640px)');
+let sheetHeight = 0;
+function applyMapPadding() {
+  map?.setPadding({ top: 0, left: 0, right: 0, bottom: isSheet.matches ? sheetHeight : 0 });
+}
 new ResizeObserver(([entry]) => {
-  $('app').style.setProperty('--sheet-h', `${entry.borderBoxSize[0].blockSize}px`);
+  sheetHeight = entry.borderBoxSize[0].blockSize;
+  $('app').style.setProperty('--sheet-h', `${sheetHeight}px`);
+  applyMapPadding();
 }).observe(document.querySelector('.panel')!);
+isSheet.addEventListener('change', applyMapPadding);
 
 // Keep "x min ago" and the freshness colour current.
 setInterval(() => {

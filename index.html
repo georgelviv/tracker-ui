@@ -70,6 +70,22 @@
           <div><dt>Altitude</dt><dd id="stat-alt">–</dd></div>
         </dl>
 
+        <details id="net-details" class="details">
+          <summary>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.55a11 11 0 0 1 14 0M1.42 9a16 16 0 0 1 21.16 0M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01" /></svg>
+            <span><span class="details-title">Connection</span><span id="net-summary" class="muted">–</span></span>
+          </summary>
+          <dl id="net-rows" class="rows"></dl>
+        </details>
+
+        <details id="gps-details" class="details">
+          <summary>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v3M12 19v3M2 12h3M19 12h3" /><circle cx="12" cy="12" r="7" /><circle cx="12" cy="12" r="2.5" /></svg>
+            <span><span class="details-title">GPS</span><span id="gps-summary" class="muted">–</span></span>
+          </summary>
+          <dl id="gps-rows" class="rows"></dl>
+        </details>
+
         <button id="coords" type="button" class="coords" title="Copy coordinates" disabled>–</button>
 
         <div class="actions">
