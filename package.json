@@ -11,10 +11,9 @@
   },
   "dependencies": {
     "firebase": "^13.2.0",
-    "leaflet": "^1.9.4"
+    "maplibre-gl": "^6.17.0"
   },
   "devDependencies": {
-    "@types/leaflet": "^1.9.22",
     "typescript": "^7.0.2",
     "vite": "^8.3.7"
   }

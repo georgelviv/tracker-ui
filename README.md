@@ -2,7 +2,7 @@
 
 **Live: https://stezhka-tracker.web.app/**
 
-Web map for the Stezhka GPS tracker: Vite + TypeScript + Leaflet (OpenStreetMap tiles), Firebase Auth +
+Web map for the Stezhka GPS tracker: Vite + TypeScript + MapLibre GL (OpenFreeMap vector tiles of OpenStreetMap data), Firebase Auth +
 Realtime Database, hosted on Firebase Hosting.
 
 It shows each device's latest position live. Only the newest point is stored; there is no history yet.

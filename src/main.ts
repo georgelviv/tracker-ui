@@ -1,7 +1,8 @@
-import 'leaflet/dist/leaflet.css';
+import 'maplibre-gl/dist/maplibre-gl.css';
 import './style.css';
 
-import L from 'leaflet';
+import * as maplibregl from 'maplibre-gl';
+import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { onValue, ref, type Unsubscribe } from 'firebase/database';
 import { auth, db } from './firebase';
@@ -69,29 +70,43 @@ onAuthStateChanged(auth, (user) => {
 
 // ---------- map ----------
 
-let map: L.Map | undefined;
-let marker: L.Marker | undefined;
+// MapLibre finds its worker next to its own module by default, which breaks
+// once Vite bundles it; point it at the worker file Vite emits instead.
+maplibregl.setWorkerUrl(workerUrl);
+
+let map: maplibregl.Map | undefined;
+let marker: maplibregl.Marker | undefined;
+let pinEl: HTMLDivElement | undefined;
 let deviceId: string | undefined;
 let latest: Fix | undefined;
 let centeredOnce = false;
 const unsubs: Unsubscribe[] = [];
 let unsubLatest: Unsubscribe | undefined;
 
+// OpenFreeMap vector tiles (OpenStreetMap data, drawn in the browser).
+const darkScheme = window.matchMedia('(prefers-color-scheme: dark)');
+const mapStyle = () =>
+  `https://tiles.openfreemap.org/styles/${darkScheme.matches ? 'dark' : 'liberty'}`;
+
 function ensureMap() {
   if (map) return map;
-  map = L.map('map', { zoomControl: false }).setView([49.84, 24.03], 12);
-  L.control.zoom({ position: 'topright' }).addTo(map);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  map = new maplibregl.Map({
+    container: 'map',
+    style: mapStyle(),
+    center: [24.03, 49.84],
+    zoom: 12,
     maxZoom: 19,
-    attribution: '&copy; OpenStreetMap contributors',
-  }).addTo(map);
+    attributionControl: { compact: true },
+  });
+  map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
+  darkScheme.addEventListener('change', () => map?.setStyle(mapStyle()));
   return map;
 }
 
 function startTracking() {
   ensureMap();
-  // The container was hidden while Leaflet initialised.
-  setTimeout(() => map?.invalidateSize(), 0);
+  // The container was hidden while the map initialised.
+  setTimeout(() => map?.resize(), 0);
 
   // One tracker for now: use the first registered device.
   unsubs.push(
@@ -185,23 +200,25 @@ function updateMarker(f: Fix | undefined, fresh: Freshness) {
     marker = undefined;
     return;
   }
-  const icon = L.divIcon({
-    className: '',
-    html: `<div class="pin ${fresh}"><span></span></div>`,
-    iconSize: [22, 22],
-    iconAnchor: [11, 11],
-  });
-  if (!marker) marker = L.marker([f.lat, f.lon], { icon, keyboard: false }).addTo(map);
-  else marker.setLatLng([f.lat, f.lon]).setIcon(icon);
+  if (!marker) {
+    pinEl = document.createElement('div');
+    pinEl.append(document.createElement('span'));
+    marker = new maplibregl.Marker({ element: pinEl }).setLngLat([f.lon, f.lat]).addTo(map);
+  } else {
+    marker.setLngLat([f.lon, f.lat]);
+  }
+  pinEl!.className = `pin ${fresh}`;
 
   if (!centeredOnce) {
     centeredOnce = true;
-    map.setView([f.lat, f.lon], 16);
+    map.jumpTo({ center: [f.lon, f.lat], zoom: 16 });
   }
 }
 
 $('center').addEventListener('click', () => {
-  if (latest && map) map.setView([latest.lat, latest.lon], Math.max(map.getZoom(), 16));
+  if (latest && map) {
+    map.easeTo({ center: [latest.lon, latest.lat], zoom: Math.max(map.getZoom(), 16) });
+  }
 });
 
 $('coords').addEventListener('click', async () => {
@@ -225,7 +242,7 @@ function formatAgo(ts: number): string {
   return new Date(ts).toLocaleString();
 }
 
-// On phones the panel is a bottom sheet; lift Leaflet's bottom controls
+// On phones the panel is a bottom sheet; lift the map's bottom controls
 // (attribution) above it.
 new ResizeObserver(([entry]) => {
   $('app').style.setProperty('--sheet-h', `${entry.borderBoxSize[0].blockSize}px`);

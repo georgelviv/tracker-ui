@@ -131,7 +131,7 @@ body { background: var(--bg); }
   position: absolute;
   top: 16px;
   left: 16px;
-  z-index: 1001; /* above Leaflet panes and controls */
+  z-index: 3; /* above map controls */
   width: 320px;
   padding: 16px;
   display: flex;
@@ -220,5 +220,6 @@ body { background: var(--bg); }
   .stats { grid-template-columns: repeat(4, 1fr); gap: 6px; }
   .stats div { padding: 8px; }
   .stats dd { font-size: 14px; }
-  .leaflet-bottom { bottom: var(--sheet-h, 0); }
+  .maplibregl-ctrl-bottom-left,
+  .maplibregl-ctrl-bottom-right { bottom: var(--sheet-h, 0); }
 }
