@@ -4,27 +4,79 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Stezhka</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%232563eb' d='M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7Zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5Z'/%3E%3C/svg%3E"
+    />
   </head>
   <body>
+    <!-- Login -->
     <div id="login" class="login" hidden>
-      <form id="login-form">
-        <h1>Stezhka</h1>
-        <input id="email" type="email" placeholder="E-mail" autocomplete="username" required />
-        <input id="password" type="password" placeholder="Password" autocomplete="current-password" required />
-        <button type="submit">Sign in</button>
-        <p id="login-error" class="error"></p>
+      <form id="login-form" class="card login-card" method="post" action="/">
+        <div class="brand brand-lg">
+          <svg class="logo" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7Zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5Z" />
+          </svg>
+          Stezhka
+        </div>
+        <p class="muted">Sign in to see where your tracker is.</p>
+
+        <label class="field">
+          <span>E-mail</span>
+          <input id="email" name="email" type="email" autocomplete="username" required />
+        </label>
+        <label class="field">
+          <span>Password</span>
+          <input id="password" name="password" type="password" autocomplete="current-password" required />
+        </label>
+
+        <button id="login-submit" type="submit" class="btn btn-primary">Sign in</button>
+        <p id="login-error" class="error" role="alert"></p>
       </form>
     </div>
 
+    <!-- App -->
     <div id="app" class="app" hidden>
-      <aside class="sidebar">
-        <header>
-          <h1>Stezhka</h1>
-          <button id="logout" class="link">Sign out</button>
+      <div id="map"></div>
+
+      <section class="card panel" aria-label="Tracker">
+        <header class="panel-head">
+          <div class="brand">
+            <svg class="logo" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7Zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5Z" />
+            </svg>
+            Stezhka
+          </div>
+          <button id="logout" type="button" class="btn btn-secondary btn-sm">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4M15 16l4-4-4-4M19 12H9" />
+            </svg>
+            Sign out
+          </button>
         </header>
-        <ul id="devices" class="devices"></ul>
-      </aside>
-      <main id="map"></main>
+
+        <div class="status">
+          <span id="status-dot" class="status-dot none"></span>
+          <div>
+            <strong id="device-name">Tracker</strong>
+            <div id="status-text" class="muted">Connecting…</div>
+          </div>
+        </div>
+
+        <dl class="stats">
+          <div><dt>Speed</dt><dd id="stat-speed">–</dd></div>
+          <div><dt>Satellites</dt><dd id="stat-sats">–</dd></div>
+          <div><dt>Accuracy</dt><dd id="stat-accuracy">–</dd></div>
+          <div><dt>Altitude</dt><dd id="stat-alt">–</dd></div>
+        </dl>
+
+        <button id="coords" type="button" class="coords" title="Copy coordinates" disabled>–</button>
+
+        <div class="actions">
+          <button id="center" type="button" class="btn btn-secondary" disabled>Center on map</button>
+          <a id="gmaps" class="btn btn-secondary is-disabled" target="_blank" rel="noopener">Google Maps</a>
+        </div>
+      </section>
     </div>
 
     <script type="module" src="/src/main.ts"></script>
