@@ -3,15 +3,7 @@ import './style.css';
 
 import L from 'leaflet';
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import {
-
-  onValue,
-  orderByKey,
-  query,
-  ref,
-  startAt,
-  type Unsubscribe,
-} from 'firebase/database';
+import { onValue, ref, type Unsubscribe } from 'firebase/database';
 import { auth, db } from './firebase';
 import type { Fix } from './types';
 
@@ -50,11 +42,9 @@ const COLORS = ['#2563eb', '#dc2626', '#16a34a', '#9333ea', '#ea580c', '#0891b2'
 
 interface DeviceView {
   marker: L.CircleMarker;
-  track: L.Polyline;
   color: string;
   latest?: Fix;
   unsubLatest?: Unsubscribe;
-  unsubTrack?: Unsubscribe;
 }
 
 let map: L.Map | undefined;
@@ -70,15 +60,11 @@ function startMap() {
       maxZoom: 19,
       attribution: '&copy; OpenStreetMap contributors',
     }).addTo(map);
-    $<HTMLSelectElement>('range').addEventListener('change', () => {
-      devices.forEach((_, id) => subscribeTrack(id));
-    });
   }
   // invalidateSize: the container was hidden while Leaflet initialised.
   setTimeout(() => map?.invalidateSize(), 0);
 
-  // The registered devices are the keys of /deviceWriters. Per device we watch
-  // only `latest` and a time-bounded slice of `track`, never the whole history.
+  // The registered devices are the keys of /deviceWriters; per device we watch `latest`.
   unsubDevices = onValue(ref(db, 'deviceWriters'), (snap) => {
     const ids = new Set<string>();
     snap.forEach((child) => {
@@ -113,7 +99,6 @@ function addDevice(id: string) {
       fillColor: color,
       fillOpacity: 1,
     }),
-    track: L.polyline([], { color, weight: 3, opacity: 0.7 }).addTo(map!),
   };
   d.marker.on('click', () => select(id));
   devices.set(id, d);
@@ -128,35 +113,14 @@ function addDevice(id: string) {
     renderList();
     if (!fittedOnce) fitAll();
   });
-  subscribeTrack(id);
 }
 
 function removeDevice(id: string) {
   const d = devices.get(id);
   if (!d) return;
   d.unsubLatest?.();
-  d.unsubTrack?.();
   d.marker.remove();
-  d.track.remove();
   devices.delete(id);
-}
-
-// Track keys are 13-digit GNSS timestamps in ms. Equal-length digit strings
-// sort the same as the numbers, so a key range is a time range.
-function subscribeTrack(id: string) {
-  const d = devices.get(id)!;
-  d.unsubTrack?.();
-  const hours = Number($<HTMLSelectElement>('range').value);
-  const from = String(Date.now() - hours * 3600_000);
-  const q = query(ref(db, `devices/${id}/track`), orderByKey(), startAt(from));
-  d.unsubTrack = onValue(q, (snap) => {
-    const pts: L.LatLngExpression[] = [];
-    snap.forEach((p) => {
-      const f = p.val() as Fix;
-      pts.push([f.lat, f.lon]);
-    });
-    d.track.setLatLngs(pts);
-  });
 }
 
 function select(id: string) {

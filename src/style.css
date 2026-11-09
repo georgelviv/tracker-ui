@@ -70,7 +70,6 @@ button.link { background: none; color: var(--muted); padding: 0; }
   margin-bottom: 16px;
 }
 .sidebar h1 { font-size: 20px; margin: 0; }
-.field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
 
 .devices { list-style: none; padding: 0; margin: 16px 0 0; }
 .device {

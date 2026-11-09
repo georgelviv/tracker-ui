@@ -3,12 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Tracker</title>
+    <title>Stezhka</title>
   </head>
   <body>
     <div id="login" class="login" hidden>
       <form id="login-form">
-        <h1>Tracker</h1>
+        <h1>Stezhka</h1>
         <input id="email" type="email" placeholder="E-mail" autocomplete="username" required />
         <input id="password" type="password" placeholder="Password" autocomplete="current-password" required />
         <button type="submit">Sign in</button>
@@ -19,17 +19,9 @@
     <div id="app" class="app" hidden>
       <aside class="sidebar">
         <header>
-          <h1>Tracker</h1>
+          <h1>Stezhka</h1>
           <button id="logout" class="link">Sign out</button>
         </header>
-        <label class="field">
-          History
-          <select id="range">
-            <option value="1">Last hour</option>
-            <option value="24" selected>Last 24 hours</option>
-            <option value="168">Last 7 days</option>
-          </select>
-        </label>
         <ul id="devices" class="devices"></ul>
       </aside>
       <main id="map"></main>
