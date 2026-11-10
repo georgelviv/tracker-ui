@@ -61,6 +61,10 @@
             <strong id="device-name">Tracker</strong>
             <div id="status-text" class="muted">Connecting…</div>
           </div>
+          <span id="battery" class="battery" hidden>
+            <span class="battery-body"><span id="battery-fill" class="battery-fill"></span></span>
+            <span id="battery-text"></span>
+          </span>
         </div>
 
         <dl class="stats">
@@ -84,6 +88,14 @@
             <span><span class="details-title">GPS</span><span id="gps-summary" class="muted">–</span></span>
           </summary>
           <dl id="gps-rows" class="rows"></dl>
+        </details>
+
+        <details id="dev-details" class="details">
+          <summary>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="7" width="17" height="10" rx="2" /><path d="M22 11v2" /></svg>
+            <span><span class="details-title">Device</span><span id="dev-summary" class="muted">–</span></span>
+          </summary>
+          <dl id="dev-rows" class="rows"></dl>
         </details>
 
         <button id="coords" type="button" class="coords" title="Copy coordinates" disabled>–</button>

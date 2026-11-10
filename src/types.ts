@@ -30,5 +30,9 @@ export interface Fix {
   device?: {
     uptime?: number; // s
     fw?: string;
+    battery?: number; // mV
+    reset?: string; // why the board last restarted
+    boots?: number;
+    brownouts?: number;
   };
 }

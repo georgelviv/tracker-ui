@@ -193,6 +193,7 @@ function render() {
 
   renderNet(f);
   renderGps(f);
+  renderDevice(f);
   updateMarker(f, fresh);
 }
 
@@ -245,8 +246,66 @@ function renderNet(f?: Fix) {
     ['Channel', net?.channel != null ? String(net.channel) : undefined],
     ['Local IP', net?.ip],
     ['Last upload', f?.receivedAt ? formatAgo(f.receivedAt) : undefined],
-    ['Uptime', f?.device?.uptime != null ? formatDuration(f.device.uptime) : undefined],
-    ['Firmware', f?.device?.fw],
+  ]);
+}
+
+// Typical Li-ion resting voltage -> charge. Rough under load, good enough for a gauge.
+const LIION_CURVE: [mv: number, pct: number][] = [
+  [3300, 0], [3450, 5], [3550, 10], [3650, 20], [3700, 30], [3750, 40],
+  [3800, 50], [3870, 60], [3950, 70], [4030, 80], [4100, 90], [4180, 100],
+];
+
+function batteryPercent(mv: number): number {
+  if (mv <= LIION_CURVE[0][0]) return 0;
+  for (let i = 1; i < LIION_CURVE.length; i++) {
+    const [v1, p1] = LIION_CURVE[i];
+    if (mv <= v1) {
+      const [v0, p0] = LIION_CURVE[i - 1];
+      return Math.round(p0 + ((mv - v0) / (v1 - v0)) * (p1 - p0));
+    }
+  }
+  return 100;
+}
+
+const RESET_NAMES: Record<string, string> = {
+  'power-on': 'Power on',
+  software: 'Software restart',
+  crash: 'Crash',
+  watchdog: 'Watchdog (hang)',
+  brownout: 'Brownout (voltage dip)',
+  'power-glitch': 'Power glitch',
+  'deep-sleep': 'Wake from sleep',
+  external: 'Reset button',
+};
+
+function renderDevice(f?: Fix) {
+  const d = f?.device;
+  const mv = d?.battery;
+  // Above ~4.25 V the reading is the charger output on USB with no cell fitted.
+  const external = mv != null && (mv > 4250 || mv < 2500);
+  const pct = mv != null && !external ? batteryPercent(mv) : undefined;
+  const volts = mv != null ? `${(mv / 1000).toFixed(2)} V` : undefined;
+
+  const badge = $('battery');
+  badge.hidden = mv == null;
+  badge.className = `battery${external ? ' external' : pct! <= 10 ? ' critical' : pct! <= 25 ? ' low' : ''}`;
+  $('battery-fill').style.width = `${external ? 100 : pct ?? 0}%`;
+  $('battery-text').textContent = external ? 'USB' : `${pct}%`;
+  badge.title = volts ? `Battery ${volts}` : '';
+
+  const batteryText = external ? `USB power (${volts})` : pct != null ? `${pct}% (${volts})` : undefined;
+  $('dev-summary').textContent = f
+    ? [batteryText ? `Battery ${batteryText}` : undefined, d?.uptime != null ? `up ${formatDuration(d.uptime)}` : undefined]
+        .filter(Boolean)
+        .join(' · ') || '–'
+    : '–';
+  setRows('dev-rows', [
+    ['Battery', batteryText],
+    ['Uptime', d?.uptime != null ? formatDuration(d.uptime) : undefined],
+    ['Last restart', d?.reset ? RESET_NAMES[d.reset] ?? d.reset : undefined],
+    ['Boots', d?.boots != null ? String(d.boots) : undefined],
+    ['Brownouts', d?.brownouts != null ? String(d.brownouts) : undefined],
+    ['Firmware', d?.fw],
   ]);
 }
 
@@ -291,7 +350,7 @@ function renderGps(f?: Fix) {
 }
 
 // Remember which sections are expanded (per browser).
-for (const id of ['net-details', 'gps-details']) {
+for (const id of ['net-details', 'gps-details', 'dev-details']) {
   const el = $<HTMLDetailsElement>(id);
   try {
     el.open = localStorage.getItem(id) === 'open';

@@ -148,6 +148,39 @@ body { background: var(--bg); }
 .status-dot.recent { background: var(--recent); }
 .status-dot.stale, .status-dot.none { background: var(--stale); }
 
+.battery {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.battery-body {
+  position: relative;
+  width: 24px;
+  height: 12px;
+  border: 1.5px solid currentColor;
+  border-radius: 3px;
+  padding: 1px;
+}
+.battery-body::after {
+  content: '';
+  position: absolute;
+  right: -4px;
+  top: 3px;
+  width: 2px;
+  height: 4px;
+  border-radius: 0 1px 1px 0;
+  background: currentColor;
+}
+.battery-fill { display: block; height: 100%; border-radius: 1px; background: var(--live); }
+.battery.low .battery-fill { background: var(--recent); }
+.battery.critical { color: var(--error); }
+.battery.critical .battery-fill { background: var(--error); }
+.battery.external .battery-fill { background: var(--stale); }
+
 .stats {
   display: grid;
   grid-template-columns: 1fr 1fr;
