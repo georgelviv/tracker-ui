@@ -17,6 +17,9 @@
         "latest": {
           ".validate": "newData.hasChildren(['lat', 'lon', 'ts'])"
         },
+        "status": {
+          ".validate": "newData.hasChildren(['receivedAt', 'gps'])"
+        },
         "$other": {
           ".validate": false
         }

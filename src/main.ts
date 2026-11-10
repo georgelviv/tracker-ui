@@ -6,7 +6,7 @@ import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { onValue, ref, type Unsubscribe } from 'firebase/database';
 import { auth, db } from './firebase';
-import type { Fix } from './types';
+import type { Device, Fix, Status } from './types';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -79,9 +79,10 @@ let marker: maplibregl.Marker | undefined;
 let pinEl: HTMLDivElement | undefined;
 let deviceId: string | undefined;
 let latest: Fix | undefined;
+let status: Status | undefined;
 let centeredOnce = false;
 const unsubs: Unsubscribe[] = [];
-let unsubLatest: Unsubscribe | undefined;
+let unsubDevice: Unsubscribe | undefined;
 
 // OpenFreeMap vector tiles (OpenStreetMap data, drawn in the browser).
 const darkScheme = window.matchMedia('(prefers-color-scheme: dark)');
@@ -123,14 +124,17 @@ function startTracking() {
 }
 
 function watchDevice(id: string | undefined) {
-  unsubLatest?.();
-  unsubLatest = undefined;
+  unsubDevice?.();
+  unsubDevice = undefined;
   deviceId = id;
   latest = undefined;
+  status = undefined;
   centeredOnce = false;
   if (id) {
-    unsubLatest = onValue(ref(db, `devices/${id}/latest`), (snap) => {
-      latest = (snap.val() as Fix | null) ?? undefined;
+    unsubDevice = onValue(ref(db, `devices/${id}`), (snap) => {
+      const v = (snap.val() as { latest?: Fix; status?: Status } | null) ?? {};
+      latest = v.latest;
+      status = v.status;
       render();
     });
   }
@@ -144,14 +148,38 @@ function stopTracking() {
 
 // ---------- panel ----------
 
-type Freshness = 'live' | 'recent' | 'stale' | 'none';
+// live: online with a fix · searching: online, no fix · recent/stale: offline
+type Freshness = 'live' | 'searching' | 'recent' | 'stale' | 'none';
 
-function freshness(f?: Fix): Freshness {
-  if (!f) return 'none';
-  const age = Date.now() - f.ts;
-  if (age < 2 * 60_000) return 'live';
+// When the tracker last checked in (status), falling back to the last fix
+// for data from firmware that did not send status yet.
+function lastSeen(): number | undefined {
+  return Math.max(status?.receivedAt ?? 0, latest?.receivedAt ?? latest?.ts ?? 0) || undefined;
+}
+
+function freshness(): Freshness {
+  const seen = lastSeen();
+  if (!seen) return 'none';
+  const age = Date.now() - seen;
+  if (age < 2 * 60_000) return status && status.gps.state !== 'fix' ? 'searching' : 'live';
   if (age < 15 * 60_000) return 'recent';
   return 'stale';
+}
+
+function satsInView(s?: { inView?: Partial<Record<string, number>> }): number {
+  return Object.values(s?.inView ?? {}).reduce<number>((n, v) => n + (v ?? 0), 0);
+}
+
+function statusLine(fresh: Freshness): string {
+  if (!deviceId) return 'No tracker is registered yet.';
+  const seen = lastSeen();
+  if (!seen) return 'Waiting for the tracker to report…';
+  if (fresh === 'live') return `Live · updated ${formatAgo(seen)}`;
+  if (fresh === 'searching') {
+    if (status!.gps.state === 'no-data') return 'Online · GPS module not responding';
+    return `Online · searching for GPS (${satsInView(status!.gps)} in view)`;
+  }
+  return `Last seen ${formatAgo(seen)}`;
 }
 
 function accuracyLabel(hdop?: number): string {
@@ -164,20 +192,17 @@ function accuracyLabel(hdop?: number): string {
 
 function render() {
   const f = latest;
-  const fresh = freshness(f);
+  const fresh = freshness();
+  const searching = fresh === 'searching';
 
   $('device-name').textContent = deviceId ?? 'No tracker';
   $('status-dot').className = `status-dot ${fresh}`;
-  $('status-text').textContent = !deviceId
-    ? 'No tracker is registered yet.'
-    : !f
-      ? 'Waiting for the first GPS fix…'
-      : fresh === 'live'
-        ? `Live · updated ${formatAgo(f.ts)}`
-        : `Last seen ${formatAgo(f.ts)}`;
+  $('status-text').textContent = statusLine(fresh);
 
-  $('stat-speed').textContent = f ? `${Math.round(f.speed ?? 0)} km/h` : '–';
-  $('stat-sats').textContent = f?.sats != null ? String(f.sats) : '–';
+  // While searching the last fix is old: hide its speed, show live satellites.
+  $('stat-speed').textContent = f && !searching ? `${Math.round(f.speed ?? 0)} km/h` : '–';
+  const sats = searching ? status!.gps.sats : f?.sats;
+  $('stat-sats').textContent = sats != null ? String(sats) : '–';
   $('stat-accuracy').textContent = f ? accuracyLabel(f.hdop) : '–';
   $('stat-alt').textContent = f?.alt != null ? `${Math.round(f.alt)} m` : '–';
 
@@ -192,9 +217,10 @@ function render() {
   else gmaps.removeAttribute('href');
 
   renderNet(f);
-  renderGps(f);
-  renderDevice(f);
-  updateMarker(f, fresh);
+  renderGps(f, fresh);
+  renderDevice(status?.device ?? f?.device, !!(f || status));
+  // The marker is the last known position; grey it out unless it is current.
+  updateMarker(f, fresh === 'live' ? 'live' : fresh === 'recent' ? 'recent' : 'stale');
 }
 
 // ---------- detail sections ----------
@@ -235,17 +261,19 @@ function formatDuration(s: number): string {
 const LINK_NAMES: Record<string, string> = { wifi: 'Wi-Fi', lte: 'LTE' };
 
 function renderNet(f?: Fix) {
-  const net = f?.net;
+  const net = status?.net ?? f?.net;
+  const known = !!(f || status);
   const type = LINK_NAMES[net?.type ?? f?.via ?? ''] ?? f?.via ?? '–';
   const quality = net?.rssi != null ? wifiQuality(net.rssi) : undefined;
-  $('net-summary').textContent = f ? [type, net?.name, quality].filter(Boolean).join(' · ') : '–';
+  const seen = lastSeen();
+  $('net-summary').textContent = known ? [type, net?.name, quality].filter(Boolean).join(' · ') : '–';
   setRows('net-rows', [
-    ['Type', f ? type : undefined],
+    ['Type', known ? type : undefined],
     ['Network', net?.name],
     ['Signal', net?.rssi != null ? `${quality} (${net.rssi} dBm)` : undefined],
     ['Channel', net?.channel != null ? String(net.channel) : undefined],
     ['Local IP', net?.ip],
-    ['Last upload', f?.receivedAt ? formatAgo(f.receivedAt) : undefined],
+    ['Last check-in', seen ? formatAgo(seen) : undefined],
   ]);
 }
 
@@ -278,8 +306,21 @@ const RESET_NAMES: Record<string, string> = {
   external: 'Reset button',
 };
 
-function renderDevice(f?: Fix) {
-  const d = f?.device;
+function describePrevRun(p: NonNullable<Device['prev']>, boots?: number): string {
+  const parts = [
+    `boot #${p.boot}, ran ${p.uptime < 60 ? `${p.uptime} s` : formatDuration(p.uptime)}`,
+    `${p.uploads} uploads`,
+  ];
+  if (p.failures) parts.push(`${p.failures} failed`);
+  if (p.noFix) parts.push(`${p.noFix}× no fix`);
+  if (p.minBattery) parts.push(`lowest ${(p.minBattery / 1000).toFixed(2)} V`);
+  // Boots after the recorded run that never reached their first report.
+  const lost = boots != null ? boots - p.boot - 1 : 0;
+  if (lost > 0) parts.push(`then ${lost} start${lost > 1 ? 's' : ''} died before reporting`);
+  return parts.join(' · ');
+}
+
+function renderDevice(d: Device | undefined, known: boolean) {
   const mv = d?.battery;
   // Above ~4.25 V the reading is the charger output on USB with no cell fitted.
   const external = mv != null && (mv > 4250 || mv < 2500);
@@ -294,7 +335,7 @@ function renderDevice(f?: Fix) {
   badge.title = volts ? `Battery ${volts}` : '';
 
   const batteryText = external ? `USB power (${volts})` : pct != null ? `${pct}% (${volts})` : undefined;
-  $('dev-summary').textContent = f
+  $('dev-summary').textContent = known
     ? [batteryText ? `Battery ${batteryText}` : undefined, d?.uptime != null ? `up ${formatDuration(d.uptime)}` : undefined]
         .filter(Boolean)
         .join(' · ') || '–'
@@ -305,6 +346,7 @@ function renderDevice(f?: Fix) {
     ['Last restart', d?.reset ? RESET_NAMES[d.reset] ?? d.reset : undefined],
     ['Boots', d?.boots != null ? String(d.boots) : undefined],
     ['Brownouts', d?.brownouts != null ? String(d.brownouts) : undefined],
+    ['Previous run', d?.prev ? describePrevRun(d.prev, d.boots) : undefined],
     ['Firmware', d?.fw],
   ]);
 }
@@ -321,11 +363,12 @@ function compass(deg: number): string {
   return ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(deg / 45) % 8];
 }
 
-function renderGps(f?: Fix) {
+function renderGps(f: Fix | undefined, fresh: Freshness) {
+  if (fresh === 'searching') return renderGpsSearching(f);
   const g = f?.gps;
   const fixType = g?.fixType === 3 ? '3D fix' : g?.fixType === 2 ? '2D fix' : g ? 'No fix' : undefined;
   const view = g?.inView ?? {};
-  const inView = CONSTELLATIONS.reduce((n, [k]) => n + (view[k] ?? 0), 0);
+  const inView = satsInView(g);
   const sats = f?.sats != null ? (g ? `${f.sats} of ${inView}` : String(f.sats)) : undefined;
 
   $('gps-summary').textContent = f
@@ -346,6 +389,25 @@ function renderGps(f?: Fix) {
     ['Heading', f?.course != null && (f.speed ?? 0) >= 2 ? `${Math.round(f.course)}° ${compass(f.course)}` : undefined],
     ['Geoid separation', g?.geoid ? `${g.geoid.toFixed(1)} m` : undefined],
     ['GPS time', f ? new Date(f.ts).toLocaleString() : undefined],
+  ]);
+}
+
+function inViewText(view: Partial<Record<string, number>>): string {
+  return CONSTELLATIONS.filter(([k]) => view[k]).map(([k, name]) => `${name} ${view[k]}`).join(' · ') || '0';
+}
+
+// Online without a fix: show what the receiver sees right now.
+function renderGpsSearching(f?: Fix) {
+  const g = status!.gps;
+  const noData = g.state === 'no-data';
+  const n = satsInView(g);
+  $('gps-summary').textContent = noData ? 'Module not responding' : `Searching · ${n} in view`;
+  setRows('gps-rows', [
+    ['Fix', noData ? 'No data from the GPS module' : 'Searching for satellites'],
+    ['Satellites used', noData ? undefined : String(g.sats ?? 0)],
+    ['In view', noData ? undefined : inViewText(g.inView ?? {})],
+    ['Signal', g.snrAvg ? `avg ${Math.round(g.snrAvg)} · best ${g.snrMax} dB-Hz` : undefined],
+    ['Last fix', f ? formatAgo(f.receivedAt ?? f.ts) : 'never'],
   ]);
 }
 
