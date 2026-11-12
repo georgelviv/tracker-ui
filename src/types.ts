@@ -2,11 +2,31 @@
 
 export type Constellation = 'gps' | 'glonass' | 'beidou' | 'galileo';
 
+// One satellite the receiver can see.
+export interface Sat {
+  sys: Constellation;
+  prn: number; // satellite number within its constellation
+  el?: number; // elevation above the horizon, degrees (0 horizon, 90 overhead)
+  az?: number; // azimuth from true north, degrees
+  snr?: number; // C/N0, dB-Hz; missing when not being tracked
+  used?: boolean; // part of the position calculation
+}
+
 export interface Satellites {
   sats?: number; // used in the fix
   snrAvg?: number; // dB-Hz
   snrMax?: number;
   inView?: Partial<Record<Constellation, number>>;
+}
+
+// Receiver details sent with every check-in (status.gps).
+export interface Receiver {
+  sky?: Sat[];
+  ttff?: number; // s from power-on to the first fix
+  clock?: number; // receiver UTC clock, epoch ms (known even without a fix)
+  mode?: 'A' | 'D' | 'E' | 'N' | string; // autonomous / differential / estimated / none
+  antenna?: string; // OK / OPEN / SHORT
+  err?: { lat: number; lon: number; alt: number }; // 1-sigma error estimate, m
 }
 
 export interface Net {
@@ -62,7 +82,7 @@ export interface Fix {
 // /devices/<id>/status: live health, written every report cycle.
 export interface Status {
   receivedAt: number; // server time, epoch ms
-  gps: Satellites & { state: 'fix' | 'searching' | 'no-data' };
+  gps: Satellites & Receiver & { state: 'fix' | 'searching' | 'no-data' };
   net?: Net;
   device?: Device;
 }

@@ -6,7 +6,8 @@ import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { onValue, ref, type Unsubscribe } from 'firebase/database';
 import { auth, db } from './firebase';
-import type { Device, Fix, Status } from './types';
+import { recordSky, renderLegend, renderSignalBars, renderSkyPlot } from './sky';
+import type { Constellation, Device, Fix, Sat, Status } from './types';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -225,19 +226,24 @@ function render() {
 
 // ---------- detail sections ----------
 
-type Row = [label: string, value: string | undefined];
+type Row = [label: string, value: string | undefined, help?: string];
 
 function setRows(id: string, rows: Row[]) {
   const dl = $(id);
   dl.replaceChildren(
     ...rows
       .filter(([, v]) => v != null && v !== '')
-      .flatMap(([k, v]) => {
+      .flatMap(([k, v, help]) => {
         const dt = document.createElement('dt');
         const dd = document.createElement('dd');
         dt.textContent = k;
         dd.textContent = v!;
-        return [dt, dd];
+        if (!help) return [dt, dd];
+        // Shown only in "Explain" mode.
+        const note = document.createElement('dd');
+        note.className = 'help';
+        note.textContent = help;
+        return [dt, dd, note];
       }),
   );
 }
@@ -352,22 +358,97 @@ function renderDevice(d: Device | undefined, known: boolean) {
 }
 
 const FIX_QUALITY: Record<number, string> = { 1: 'GPS', 2: 'DGPS', 4: 'RTK', 5: 'RTK float', 6: 'Estimated' };
-const CONSTELLATIONS: [key: 'gps' | 'glonass' | 'beidou' | 'galileo', name: string][] = [
+const CONSTELLATIONS: [key: Constellation, name: string][] = [
   ['gps', 'GPS'],
   ['beidou', 'BeiDou'],
   ['glonass', 'GLONASS'],
   ['galileo', 'Galileo'],
 ];
+const POS_MODES: Record<string, string> = {
+  A: 'Autonomous (satellites only)',
+  D: 'Differential (with corrections)',
+  E: 'Estimated (dead reckoning)',
+  N: 'No fix',
+};
+const ANTENNA: Record<string, string> = { OK: 'Connected', OPEN: 'Not detected', SHORT: 'Short circuit' };
+// Typical ranging error of a single-frequency receiver, m (UERE); HDOP × this ≈ 1σ horizontal error.
+const UERE_M = 3;
 
 function compass(deg: number): string {
   return ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(deg / 45) % 8];
 }
 
+function inViewText(view: Partial<Record<string, number>>): string {
+  return CONSTELLATIONS.filter(([k]) => view[k]).map(([k, name]) => `${name} ${view[k]}`).join(' · ') || '0';
+}
+
+function utcTime(ms: number): string {
+  return new Date(ms).toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
+}
+
+const HELP = {
+  fix:
+    'A 2D fix uses 3 satellites and gives only latitude and longitude. A 3D fix uses 4 or more and adds altitude. ' +
+    'The fourth unknown is the error of the receiver’s own clock, which is why 4 satellites are the minimum.',
+  mode: 'How the position was computed. "Autonomous" means from satellite signals alone, with no correction service.',
+  used:
+    'Not every satellite in view is used. Each one must be heard clearly for about 30 s while the receiver ' +
+    'downloads its exact orbit (ephemeris). Weak or very low satellites are left out.',
+  inView: 'Satellites above the horizon, according to the orbit almanac the satellites broadcast.',
+  signal:
+    'Carrier-to-noise density (C/N0) in dB-Hz: signal power relative to the noise in 1 Hz of bandwidth. ' +
+    'GPS signals reach the ground far below the noise floor (≈ −130 dBm), so receivers report C/N0 instead of dBm.',
+  accuracy:
+    'An estimate, not a guarantee. The true position is inside this radius about 2 times out of 3 (1σ). ' +
+    'Without the receiver’s own error estimate it is HDOP × ≈3 m, the typical range error.',
+  dop:
+    'Dilution of precision: how much the satellite geometry magnifies range errors. Satellites spread across the ' +
+    'sky give low values (≈1, good). Satellites bunched together give high values (over 5, poor). ' +
+    'P = 3D position, H = horizontal, V = vertical.',
+  altitude:
+    'Height above mean sea level. Vertical accuracy is usually about 1.5× worse than horizontal, because all ' +
+    'satellites are above you and none are below.',
+  ellipsoid:
+    'GPS natively computes height above the WGS-84 ellipsoid, a smooth mathematical model of the Earth. ' +
+    'The geoid separation (local sea level above the ellipsoid) converts it to altitude.',
+  heading: 'Direction of travel, computed from movement. It is not a compass, so it is only shown while moving.',
+  ttff:
+    'Time from power-on to the first fix. A cold start, with no orbit data saved, takes 30 s or more. ' +
+    'A warm start with recent data takes a few seconds.',
+  clock:
+    'Satellites carry atomic clocks. Once the receiver hears one, it knows UTC to within microseconds, even before ' +
+    'it has a fix.',
+  delay: 'Time between the receiver computing this fix and the database receiving it.',
+  antenna:
+    'The receiver checks the current drawn by an active antenna. "Not detected" is normal with a passive antenna.',
+  searching:
+    'It needs at least 4 satellites, each heard clearly for about 30 s, to download their orbits and compute a fix.',
+};
+
+function renderSky(sky: Sat[] | undefined) {
+  const has = !!sky?.length;
+  $('sky-figure').hidden = !has;
+  $('sig-figure').hidden = !has;
+  document.querySelector<HTMLElement>('.sky-key')!.hidden = !has;
+  if (!has) return;
+  recordSky(sky, status?.receivedAt ?? 0);
+  renderSkyPlot($('sky-figure'), sky!);
+  renderSignalBars($('sig-figure'), sky!);
+  renderLegend($('sky-legend'), sky!);
+}
+
+function signalText(g?: { snrAvg?: number; snrMax?: number }): string | undefined {
+  return g?.snrAvg ? `avg ${Math.round(g.snrAvg)} · best ${g.snrMax} dB-Hz` : undefined;
+}
+
 function renderGps(f: Fix | undefined, fresh: Freshness) {
   if (fresh === 'searching') return renderGpsSearching(f);
   const g = f?.gps;
+  // Receiver details from the latest check-in, when it belongs to this fix.
+  const rcv = status?.gps.state === 'fix' ? status.gps : undefined;
+  renderSky(rcv?.sky);
+
   const fixType = g?.fixType === 3 ? '3D fix' : g?.fixType === 2 ? '2D fix' : g ? 'No fix' : undefined;
-  const view = g?.inView ?? {};
   const inView = satsInView(g);
   const sats = f?.sats != null ? (g ? `${f.sats} of ${inView}` : String(f.sats)) : undefined;
 
@@ -375,25 +456,38 @@ function renderGps(f: Fix | undefined, fresh: Freshness) {
     ? [fixType, sats && `${sats} satellites`].filter(Boolean).join(' · ') || '–'
     : '–';
   const dop = (v?: number) => (v != null && v > 0 ? v.toFixed(1) : '–');
+  const err = rcv?.err;
+  const accuracy = err
+    ? `±${Math.max(err.lat, err.lon).toFixed(1)} m (vertical ±${err.alt.toFixed(1)} m)`
+    : f?.hdop
+      ? `≈ ±${Math.max(1, Math.round(f.hdop * UERE_M))} m · ${accuracyLabel(f.hdop)}`
+      : undefined;
+  const delay = f?.receivedAt && f.ts ? (f.receivedAt - f.ts) / 1000 : undefined;
   setRows('gps-rows', [
-    ['Fix', fixType && [fixType, FIX_QUALITY[g?.quality ?? -1]].filter(Boolean).join(', ')],
-    ['Satellites used', f?.sats != null ? String(f.sats) : undefined],
+    ['Fix', fixType && [fixType, FIX_QUALITY[g?.quality ?? -1]].filter(Boolean).join(', '), HELP.fix],
+    ['Mode', rcv?.mode ? POS_MODES[rcv.mode] ?? rcv.mode : undefined, HELP.mode],
+    ['Satellites used', sats, HELP.used],
+    ['In view', g?.inView ? inViewText(g.inView) : undefined, HELP.inView],
+    ['Signal', signalText(g), HELP.signal],
+    ['Accuracy', accuracy, HELP.accuracy],
+    ['DOP (P / H / V)', g ? `${dop(g.pdop)} / ${dop(f?.hdop)} / ${dop(g.vdop)}` : undefined, HELP.dop],
+    ['Altitude', f?.alt != null ? `${f.alt.toFixed(1)} m above sea level` : undefined, HELP.altitude],
     [
-      'In view',
-      g?.inView
-        ? CONSTELLATIONS.filter(([k]) => view[k]).map(([k, name]) => `${name} ${view[k]}`).join(' · ') || '0'
-        : undefined,
+      'Ellipsoid height',
+      f?.alt != null && g?.geoid ? `${(f.alt + g.geoid).toFixed(1)} m (geoid +${g.geoid.toFixed(1)} m)` : undefined,
+      HELP.ellipsoid,
     ],
-    ['Signal', g?.snrAvg ? `avg ${Math.round(g.snrAvg)} · best ${g.snrMax} dB-Hz` : undefined],
-    ['DOP (P / H / V)', g ? `${dop(g.pdop)} / ${dop(f?.hdop)} / ${dop(g.vdop)}` : undefined],
-    ['Heading', f?.course != null && (f.speed ?? 0) >= 2 ? `${Math.round(f.course)}° ${compass(f.course)}` : undefined],
-    ['Geoid separation', g?.geoid ? `${g.geoid.toFixed(1)} m` : undefined],
-    ['GPS time', f ? new Date(f.ts).toLocaleString() : undefined],
+    ['Speed', f ? `${(f.speed ?? 0).toFixed(1)} km/h` : undefined],
+    [
+      'Heading',
+      f?.course != null && (f.speed ?? 0) >= 2 ? `${Math.round(f.course)}° ${compass(f.course)}` : f ? 'standing still' : undefined,
+      HELP.heading,
+    ],
+    ['Time to first fix', rcv?.ttff != null ? `${rcv.ttff} s after power-on` : undefined, HELP.ttff],
+    ['GPS time', f ? utcTime(f.ts) : undefined, HELP.clock],
+    ['Upload delay', delay != null && delay >= 0 && delay < 600 ? `${delay.toFixed(1)} s` : undefined, HELP.delay],
+    ['Antenna', rcv?.antenna ? ANTENNA[rcv.antenna] ?? rcv.antenna : undefined, HELP.antenna],
   ]);
-}
-
-function inViewText(view: Partial<Record<string, number>>): string {
-  return CONSTELLATIONS.filter(([k]) => view[k]).map(([k, name]) => `${name} ${view[k]}`).join(' · ') || '0';
 }
 
 // Online without a fix: show what the receiver sees right now.
@@ -401,14 +495,48 @@ function renderGpsSearching(f?: Fix) {
   const g = status!.gps;
   const noData = g.state === 'no-data';
   const n = satsInView(g);
+  renderSky(noData ? undefined : g.sky);
+  const heard = g.sky?.filter((s) => s.snr != null).length;
   $('gps-summary').textContent = noData ? 'Module not responding' : `Searching · ${n} in view`;
   setRows('gps-rows', [
-    ['Fix', noData ? 'No data from the GPS module' : 'Searching for satellites'],
-    ['Satellites used', noData ? undefined : String(g.sats ?? 0)],
-    ['In view', noData ? undefined : inViewText(g.inView ?? {})],
-    ['Signal', g.snrAvg ? `avg ${Math.round(g.snrAvg)} · best ${g.snrMax} dB-Hz` : undefined],
+    ['Fix', noData ? 'No data from the GPS module' : 'Searching for satellites', noData ? undefined : HELP.searching],
+    ['Mode', g.mode ? POS_MODES[g.mode] ?? g.mode : undefined, HELP.mode],
+    ['Satellites used', noData ? undefined : String(g.sats ?? 0), HELP.used],
+    ['In view', noData ? undefined : inViewText(g.inView ?? {}), HELP.inView],
+    ['Received', heard != null ? `${heard} with a signal` : undefined],
+    ['Signal', signalText(g), HELP.signal],
+    ['GPS time', g.clock ? utcTime(g.clock) : noData ? undefined : 'not known yet', HELP.clock],
+    ['Antenna', g.antenna ? ANTENNA[g.antenna] ?? g.antenna : undefined, HELP.antenna],
     ['Last fix', f ? formatAgo(f.receivedAt ?? f.ts) : 'never'],
   ]);
+}
+
+// "Explain" shows a short description under each GPS value.
+{
+  const btn = $<HTMLButtonElement>('gps-explain');
+  const body = document.querySelector<HTMLElement>('.gps-body')!;
+  const apply = (on: boolean) => {
+    body.classList.toggle('explain', on);
+    btn.setAttribute('aria-pressed', String(on));
+    btn.textContent = on ? 'Hide explanations' : 'Explain';
+    $('gps-primer').hidden = !on;
+  };
+  let on = false;
+  try {
+    on = localStorage.getItem('gps-explain') === 'on';
+  } catch {
+    /* storage blocked */
+  }
+  apply(on);
+  btn.addEventListener('click', () => {
+    on = !on;
+    apply(on);
+    try {
+      localStorage.setItem('gps-explain', on ? 'on' : 'off');
+    } catch {
+      /* storage blocked */
+    }
+  });
 }
 
 // Remember which sections are expanded (per browser).
@@ -495,3 +623,4 @@ isSheet.addEventListener('change', applyMapPadding);
 setInterval(() => {
   if (deviceId) render();
 }, 30_000);
+

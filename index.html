@@ -87,7 +87,55 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v3M12 19v3M2 12h3M19 12h3" /><circle cx="12" cy="12" r="7" /><circle cx="12" cy="12" r="2.5" /></svg>
             <span><span class="details-title">GPS</span><span id="gps-summary" class="muted">–</span></span>
           </summary>
-          <dl id="gps-rows" class="rows"></dl>
+          <div class="gps-body">
+            <div class="gps-toolbar">
+              <button id="gps-explain" type="button" class="link-btn" aria-pressed="false">Explain</button>
+            </div>
+            <div id="gps-primer" class="primer" hidden>
+              <p>
+                Each navigation satellite broadcasts its exact position and the time from an atomic clock. The receiver
+                measures how long each signal took to arrive (≈ 67 ms from 20 000 km). That delay times the speed of light
+                is the distance. With distances to four or more satellites it can solve for latitude, longitude, altitude
+                and the error of its own cheap clock.
+              </p>
+              <p>
+                The L76K tracks GPS (USA) together with GLONASS (Russia) or BeiDou (China), whichever the module is
+                set to. More satellites spread across the sky give a more precise fix.
+              </p>
+            </div>
+
+            <figure id="sky-figure" class="sky-figure">
+              <figcaption>
+                <span class="fig-title">Sky view</span>
+                <span class="help">
+                  Looking straight up: the centre is overhead, the outer ring is the horizon, north at the top.
+                  Satellites low on the horizon are easily blocked by buildings and trees. Satellites drift slowly,
+                  and their paths build up while this page is open.
+                </span>
+              </figcaption>
+            </figure>
+            <div class="sky-key">
+              <span id="sky-legend" class="sky-legend"></span>
+              <span class="sky-states">
+                <span><i class="state used"></i>used</span>
+                <span><i class="state heard"></i>received</span>
+                <span><i class="state silent"></i>no signal</span>
+              </span>
+            </div>
+
+            <figure id="sig-figure" class="sky-figure">
+              <figcaption>
+                <span class="fig-title">Signal strength (dB-Hz)</span>
+                <span class="help">
+                  How clearly each satellite is heard above the noise. Above 35 is strong (open sky). 25–35 is usable.
+                  Below the dashed line at 25 the receiver struggles to read the satellite's data. Indoors, signals drop by
+                  10–20 dB-Hz.
+                </span>
+              </figcaption>
+            </figure>
+
+            <dl id="gps-rows" class="rows"></dl>
+          </div>
         </details>
 
         <details id="dev-details" class="details">
