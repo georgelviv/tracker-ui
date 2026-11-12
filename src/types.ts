@@ -79,10 +79,34 @@ export interface Fix {
   device?: Device;
 }
 
+// Mobile modem (A7670), SIM and the serving cell tower.
+export interface Cell {
+  model?: string;
+  fw?: string;
+  imei?: string;
+  sim?: string; // ready / SIM not inserted / SIM PIN / ...
+  iccid?: string; // SIM card number
+  reg?: number; // 0 not searching, 1 home, 2 searching, 3 denied, 4 unknown, 5 roaming
+  op?: string; // operator name
+  csq?: number; // signal, dBm (AT+CSQ)
+  temp?: number; // modem temperature, °C
+  sys?: string; // LTE / GSM / NO SERVICE
+  mccmnc?: string; // e.g. 255-03
+  area?: string; // TAC (LTE) / LAC (GSM), hex
+  cellId?: number;
+  band?: string;
+  channel?: number; // EARFCN / ARFCN
+  rsrp?: number; // dBm
+  rsrq?: number; // dB
+  rssi?: number; // dBm
+  sinr?: number; // dB
+}
+
 // /devices/<id>/status: live health, written every report cycle.
 export interface Status {
   receivedAt: number; // server time, epoch ms
   gps: Satellites & Receiver & { state: 'fix' | 'searching' | 'no-data' };
   net?: Net;
+  cell?: Cell;
   device?: Device;
 }

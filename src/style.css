@@ -257,9 +257,10 @@ body { background: var(--bg); }
 
 /* ---------- GPS section ---------- */
 
-.gps-body { padding: 0 12px 4px; display: flex; flex-direction: column; gap: 10px; }
-.gps-body .rows { padding: 2px 0 8px; }
-.gps-body.explain .rows dd.help { display: block; }
+.section-body { padding: 0 12px 4px; display: flex; flex-direction: column; gap: 10px; }
+.section-body .rows { padding: 2px 0 8px; }
+.explain .rows dd.help { display: block; }
+.section-body:not(.explain) .explain-only { display: none; }
 .gps-toolbar { display: flex; justify-content: flex-end; margin-bottom: -6px; }
 .link-btn {
   font: inherit;
@@ -280,7 +281,7 @@ body { background: var(--bg); }
 .sky-figure figcaption { display: flex; flex-direction: column; gap: 2px; }
 .fig-title { font-size: 12px; font-weight: 600; color: var(--muted); }
 .sky-figure .help { display: none; font-size: 12px; line-height: 1.45; color: var(--muted); }
-.gps-body.explain .sky-figure .help { display: block; }
+.explain .sky-figure .help { display: block; }
 .sky-figure svg { width: 100%; height: auto; display: block; overflow: visible; }
 .sky-plot { max-width: 260px; align-self: center; }
 

@@ -218,6 +218,7 @@ function render() {
   else gmaps.removeAttribute('href');
 
   renderNet(f);
+  renderCell();
   renderGps(f, fresh);
   renderDevice(status?.device ?? f?.device, !!(f || status));
   // The marker is the last known position; grey it out unless it is current.
@@ -511,15 +512,16 @@ function renderGpsSearching(f?: Fix) {
   ]);
 }
 
-// "Explain" shows a short description under each GPS value.
+// "Explain" shows a short description under each value (GPS and mobile sections).
 {
-  const btn = $<HTMLButtonElement>('gps-explain');
-  const body = document.querySelector<HTMLElement>('.gps-body')!;
+  const bodies = document.querySelectorAll<HTMLElement>('.section-body');
+  const buttons = document.querySelectorAll<HTMLButtonElement>('.explain-btn');
   const apply = (on: boolean) => {
-    body.classList.toggle('explain', on);
-    btn.setAttribute('aria-pressed', String(on));
-    btn.textContent = on ? 'Hide explanations' : 'Explain';
-    $('gps-primer').hidden = !on;
+    bodies.forEach((b) => b.classList.toggle('explain', on));
+    buttons.forEach((btn) => {
+      btn.setAttribute('aria-pressed', String(on));
+      btn.textContent = on ? 'Hide explanations' : 'Explain';
+    });
   };
   let on = false;
   try {
@@ -528,19 +530,125 @@ function renderGpsSearching(f?: Fix) {
     /* storage blocked */
   }
   apply(on);
-  btn.addEventListener('click', () => {
-    on = !on;
-    apply(on);
-    try {
-      localStorage.setItem('gps-explain', on ? 'on' : 'off');
-    } catch {
-      /* storage blocked */
-    }
-  });
+  buttons.forEach((btn) =>
+    btn.addEventListener('click', () => {
+      on = !on;
+      apply(on);
+      try {
+        localStorage.setItem('gps-explain', on ? 'on' : 'off');
+      } catch {
+        /* storage blocked */
+      }
+    }),
+  );
+}
+
+// ---------- mobile network ----------
+
+const REG_NAMES: Record<number, string> = {
+  0: 'Not registered',
+  1: 'Registered (home network)',
+  2: 'Searching for a network',
+  3: 'Registration denied',
+  4: 'Unknown',
+  5: 'Registered (roaming)',
+};
+const SIM_NAMES: Record<string, string> = {
+  ready: 'Ready',
+  'SIM not inserted': 'Not inserted',
+  'SIM failure': 'Not detected',
+  'SIM PIN': 'Locked (PIN required)',
+  'SIM PUK': 'Blocked (PUK required)',
+  'SIM busy': 'Starting up',
+};
+// LTE reference signal power: what phones turn into "bars".
+function rsrpQuality(dbm: number): string {
+  if (dbm >= -80) return 'Excellent';
+  if (dbm >= -90) return 'Good';
+  if (dbm >= -100) return 'Fair';
+  if (dbm >= -110) return 'Weak';
+  return 'Very weak';
+}
+function gsmQuality(dbm: number): string {
+  if (dbm >= -70) return 'Excellent';
+  if (dbm >= -85) return 'Good';
+  if (dbm >= -100) return 'Fair';
+  return 'Weak';
+}
+
+const CELL_HELP = {
+  status:
+    'Whether the modem is attached to a mobile network. It needs a SIM to register. Roaming means a network ' +
+    'other than the SIM\u2019s own.',
+  sim: 'The SIM identifies the subscription to the network. Without one, the modem can only listen.',
+  network: 'Radio technology of the serving cell: LTE (4G) or GSM (2G). The A7670 has no 3G.',
+  code:
+    'Mobile Country Code + Mobile Network Code. The MCC is the country (255 = Ukraine) and the MNC is the ' +
+    'operator within it.',
+  signal:
+    'LTE: RSRP, the power of the tower\u2019s reference signal, in dBm. −80 or higher is excellent, −100 is ' +
+    'fair, below −110 data gets unreliable. GSM: received power in dBm.',
+  rsrq:
+    'Reference signal quality: how much of the received power is the tower\u2019s signal rather than ' +
+    'interference and load. −3 to −10 dB is good, below −15 dB poor.',
+  sinr:
+    'Signal to interference plus noise ratio. Above 13 dB is excellent, 0–13 dB usable, below 0 the noise ' +
+    'is louder than the signal.',
+  rssi: 'Total received power on the channel, including noise and other cells. Less useful than RSRP on its own.',
+  band: 'Frequency band of the serving cell, e.g. LTE band 3 = 1800 MHz, band 20 = 800 MHz, band 7 = 2600 MHz.',
+  channel: 'Exact carrier frequency number within the band: EARFCN on LTE, ARFCN on GSM.',
+  cell:
+    'Which tower and antenna the modem is using. On LTE the cell id = base station (eNodeB) × 256 + sector. ' +
+    'The area code groups nearby towers.',
+  temp: 'Temperature inside the modem chip. It warms up while transmitting.',
+  imei: 'The modem\u2019s unique hardware id. The network sees it, together with the SIM number.',
+  iccid: 'The SIM card\u2019s serial number, printed on the card.',
+};
+
+function renderCell() {
+  const c = status?.cell;
+  const noSim = !!c?.sim && c.sim !== 'ready';
+  const lte = c?.sys === 'LTE';
+  const signal =
+    lte && c?.rsrp != null
+      ? `${rsrpQuality(c.rsrp)} (RSRP ${c.rsrp.toFixed(0)} dBm)`
+      : c?.rssi != null
+        ? `${gsmQuality(c.rssi)} (${c.rssi.toFixed(0)} dBm)`
+        : c?.csq != null
+          ? `${c.csq} dBm`
+          : undefined;
+  const registered = c?.reg === 1 || c?.reg === 5;
+  $('cell-summary').textContent = !c
+    ? '–'
+    : noSim
+      ? 'No SIM card'
+      : registered
+        ? [c.op, c.sys, signal?.split(' (')[0]].filter(Boolean).join(' · ')
+        : REG_NAMES[c.reg ?? 4] ?? '–';
+  const sys = c?.sys === 'NO SERVICE' ? 'No service' : c?.sys;
+  const enb = lte && c?.cellId != null ? ` (base station ${c.cellId >> 8}, sector ${c.cellId & 255})` : '';
+  setRows('cell-rows', [
+    ['Status', c?.reg != null ? REG_NAMES[c.reg] ?? String(c.reg) : undefined, CELL_HELP.status],
+    ['SIM', c?.sim ? SIM_NAMES[c.sim] ?? c.sim : undefined, CELL_HELP.sim],
+    ['Operator', c?.op],
+    ['Network', sys, CELL_HELP.network],
+    ['MCC-MNC', c?.mccmnc, CELL_HELP.code],
+    ['Signal', signal, CELL_HELP.signal],
+    ['RSRQ', c?.rsrq != null ? `${c.rsrq.toFixed(1)} dB` : undefined, CELL_HELP.rsrq],
+    ['SINR', c?.sinr != null ? `${c.sinr} dB` : undefined, CELL_HELP.sinr],
+    ['RSSI', lte && c?.rssi != null ? `${c.rssi.toFixed(0)} dBm` : undefined, CELL_HELP.rssi],
+    ['Band', c?.band?.replace('EUTRAN-BAND', 'LTE band '), CELL_HELP.band],
+    ['Channel', c?.channel != null ? String(c.channel) : undefined, CELL_HELP.channel],
+    ['Cell', c?.cellId != null ? `${c.cellId}${enb}${c.area ? `, area ${c.area}` : ''}` : undefined, CELL_HELP.cell],
+    ['Modem temperature', c?.temp != null ? `${c.temp} °C` : undefined, CELL_HELP.temp],
+    ['Modem', c?.model ? [c.model, c.fw].filter(Boolean).join(' · ') : undefined],
+    ['IMEI', c?.imei, CELL_HELP.imei],
+    ['SIM number', c?.iccid, CELL_HELP.iccid],
+  ]);
 }
 
 // Remember which sections are expanded (per browser).
-for (const id of ['net-details', 'gps-details', 'dev-details']) {
+for (const id of ['net-details', 'cell-details', 'gps-details', 'dev-details']) {
   const el = $<HTMLDetailsElement>(id);
   try {
     el.open = localStorage.getItem(id) === 'open';
@@ -623,4 +731,5 @@ isSheet.addEventListener('change', applyMapPadding);
 setInterval(() => {
   if (deviceId) render();
 }, 30_000);
+
 

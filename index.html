@@ -82,16 +82,36 @@
           <dl id="net-rows" class="rows"></dl>
         </details>
 
+        <details id="cell-details" class="details">
+          <summary>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 20h.01M7 20v-4M12 20v-8M17 20V8M22 4v16" /></svg>
+            <span><span class="details-title">Mobile network</span><span id="cell-summary" class="muted">–</span></span>
+          </summary>
+          <div class="section-body">
+            <div class="gps-toolbar">
+              <button type="button" class="link-btn explain-btn" aria-pressed="false">Explain</button>
+            </div>
+            <div class="primer explain-only">
+              <p>
+                The A7670 modem connects to the mobile network the way a phone does: LTE (4G) Cat-1 for data, falling back
+                to GSM (2G). It talks to one cell tower at a time, the serving cell. With a SIM it can send positions
+                where there is no Wi-Fi. Right now the tracker uses Wi-Fi, and the modem only reports its state.
+              </p>
+            </div>
+            <dl id="cell-rows" class="rows"></dl>
+          </div>
+        </details>
+
         <details id="gps-details" class="details">
           <summary>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v3M12 19v3M2 12h3M19 12h3" /><circle cx="12" cy="12" r="7" /><circle cx="12" cy="12" r="2.5" /></svg>
             <span><span class="details-title">GPS</span><span id="gps-summary" class="muted">–</span></span>
           </summary>
-          <div class="gps-body">
+          <div class="gps-body section-body">
             <div class="gps-toolbar">
-              <button id="gps-explain" type="button" class="link-btn" aria-pressed="false">Explain</button>
+              <button type="button" class="link-btn explain-btn" aria-pressed="false">Explain</button>
             </div>
-            <div id="gps-primer" class="primer" hidden>
+            <div class="primer explain-only">
               <p>
                 Each navigation satellite broadcasts its exact position and the time from an atomic clock. The receiver
                 measures how long each signal took to arrive (≈ 67 ms from 20 000 km). That delay times the speed of light
