@@ -39,7 +39,7 @@
     <div id="app" class="app" hidden>
       <div id="map"></div>
 
-      <section class="card panel" aria-label="Tracker">
+      <section id="panel" class="card panel" aria-label="Tracker">
         <header class="panel-head">
           <div class="brand">
             <svg class="logo" viewBox="0 0 24 24" aria-hidden="true">
@@ -47,12 +47,24 @@
             </svg>
             Stezhka
           </div>
-          <button id="logout" type="button" class="btn btn-secondary btn-sm">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4M15 16l4-4-4-4M19 12H9" />
-            </svg>
-            Sign out
-          </button>
+          <div class="head-actions">
+            <button id="logout" type="button" class="btn btn-secondary btn-sm">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4M15 16l4-4-4-4M19 12H9" />
+              </svg>
+              Sign out
+            </button>
+            <button
+              id="panel-toggle"
+              type="button"
+              class="btn btn-secondary btn-sm btn-icon"
+              aria-expanded="true"
+              aria-label="Hide details"
+              title="Hide details"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6" /></svg>
+            </button>
+          </div>
         </header>
 
         <div class="status">

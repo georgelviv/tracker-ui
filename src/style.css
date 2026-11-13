@@ -151,6 +151,16 @@ body { background: var(--bg); }
   gap: 16px;
 }
 .panel-head { display: flex; justify-content: space-between; align-items: center; }
+.head-actions { display: flex; gap: 8px; }
+.btn-icon { padding: 6px; }
+.btn-icon svg { transition: transform 160ms; }
+
+/* Collapsed: only the header and the live status line stay visible. */
+.panel.collapsed > :not(.panel-head):not(.status) { display: none; }
+.panel.collapsed .btn-icon svg { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) {
+  .btn-icon svg { transition: none; }
+}
 
 .status { display: flex; gap: 12px; align-items: center; }
 .status strong { font-size: 16px; }
@@ -384,6 +394,9 @@ body { background: var(--bg); }
     gap: 12px;
     max-height: 70vh;
   }
+  /* The sheet hides downwards: chevron points down while open, up while collapsed. */
+  .btn-icon svg { transform: rotate(180deg); }
+  .panel.collapsed .btn-icon svg { transform: none; }
   .stats { grid-template-columns: repeat(4, 1fr); gap: 6px; }
   .stats div { padding: 8px; }
   .stats dd { font-size: 14px; }

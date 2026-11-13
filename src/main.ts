@@ -648,6 +648,35 @@ function renderCell() {
   ]);
 }
 
+// Collapse the whole panel to its header and status line (per browser).
+{
+  const panel = $('panel');
+  const btn = $('panel-toggle');
+  const apply = (collapsed: boolean) => {
+    panel.classList.toggle('collapsed', collapsed);
+    btn.setAttribute('aria-expanded', String(!collapsed));
+    const label = collapsed ? 'Show details' : 'Hide details';
+    btn.setAttribute('aria-label', label);
+    btn.title = label;
+  };
+  let collapsed = false;
+  try {
+    collapsed = localStorage.getItem('panel') === 'collapsed';
+  } catch {
+    /* storage blocked */
+  }
+  apply(collapsed);
+  btn.addEventListener('click', () => {
+    collapsed = !collapsed;
+    apply(collapsed);
+    try {
+      localStorage.setItem('panel', collapsed ? 'collapsed' : 'open');
+    } catch {
+      /* storage blocked */
+    }
+  });
+}
+
 // Remember which sections are expanded (per browser).
 for (const id of ['net-details', 'cell-details', 'gps-details', 'dev-details']) {
   const el = $<HTMLDetailsElement>(id);
