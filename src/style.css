@@ -332,6 +332,12 @@ body { background: var(--bg); }
 .sky-states .state.used { background: var(--muted); }
 .sky-states .state.silent { border-style: dashed; opacity: 0.7; }
 
+.map-option { display: flex; flex-direction: column; gap: 4px; }
+.check { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
+.map-option .help { font-size: 12px; color: var(--muted); }
+.section-body:not(.explain) .map-option .help { display: none; }
+
 .sky-tip {
   position: absolute;
   z-index: 2;

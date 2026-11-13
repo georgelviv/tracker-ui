@@ -7,6 +7,7 @@ import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebas
 import { onValue, ref, type Unsubscribe } from 'firebase/database';
 import { auth, db } from './firebase';
 import { recordSky, renderLegend, renderSignalBars, renderSkyPlot } from './sky';
+import { skyBounds, updateSkyMap } from './skymap';
 import type { Constellation, Device, Fix, Sat, Status } from './types';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -223,7 +224,33 @@ function render() {
   renderDevice(status?.device ?? f?.device, !!(f || status));
   // The marker is the last known position; grey it out unless it is current.
   updateMarker(f, fresh === 'live' ? 'live' : fresh === 'recent' ? 'recent' : 'stale');
+  updateSkyMap(map, skyOrigin(), status?.gps?.sky, skyOnMap.checked);
 }
+
+// ---------- satellites on the map ----------
+
+const skyOnMap = $<HTMLInputElement>('sky-on-map');
+const skyOrigin = (): [number, number] | undefined => (latest ? [latest.lon, latest.lat] : undefined);
+try {
+  skyOnMap.checked = localStorage.getItem('sky-on-map') === 'on';
+} catch {
+  /* storage blocked */
+}
+skyOnMap.addEventListener('change', () => {
+  try {
+    localStorage.setItem('sky-on-map', skyOnMap.checked ? 'on' : 'off');
+  } catch {
+    /* storage blocked */
+  }
+  const origin = skyOrigin();
+  const sky = status?.gps?.sky;
+  updateSkyMap(map, origin, sky, skyOnMap.checked);
+  // Zoom out once so all the satellites' ground points are in view.
+  if (skyOnMap.checked && map && origin && sky) {
+    const b = skyBounds(origin, sky);
+    if (b) map.fitBounds(b, { padding: 40, maxZoom: 6 });
+  }
+});
 
 // ---------- detail sections ----------
 
