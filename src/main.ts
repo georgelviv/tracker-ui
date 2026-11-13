@@ -603,7 +603,30 @@ const CELL_HELP = {
     'The area code groups nearby towers.',
   temp: 'Temperature inside the modem chip. It warms up while transmitting.',
   imei: 'The modem\u2019s unique hardware id. The network sees it, together with the SIM number.',
-  iccid: 'The SIM card\u2019s serial number, printed on the card.',
+  iccid: 'The SIM card\u2019s serial number (ICCID), printed on the card.',
+  freq: 'Centre frequency the tower transmits on, worked out from the band and channel number.',
+  bw: 'Width of the LTE carrier. Wider carriers carry more data: 20 MHz is the most a single LTE carrier uses.',
+  pci:
+    'Physical cell id (0–503): the short number the modem decodes from the radio signal before it reads the ' +
+    'full cell id. Neighbouring cells always have different ones.',
+  mode: 'Which networks the modem may use. Automatic picks LTE where available and falls back to GSM.',
+  data:
+    'Attached means the network has set up a packet data session for the SIM, which mobile data needs. It ' +
+    'does not mean data is flowing.',
+  apn:
+    'Access point: the gateway between the operator’s network and the internet. The tracker asks for ' +
+    '\u201cinternet\u201d and the network reports the full name it granted.',
+  dns: 'Name servers the operator hands out for looking up addresses such as firebaseio.com over mobile data.',
+  number: 'The SIM\u2019s phone number, if the operator stored it on the card. Many SIMs leave it empty.',
+  spn: 'Operator name stored on the SIM, which can differ from the network it is using (when roaming).',
+  sms: 'Text messages waiting in the SIM\u2019s memory. The tracker does not read or send SMS.',
+  smsc: 'The operator\u2019s SMS centre that would relay outgoing texts.',
+  psm:
+    'Power saving mode lets the modem sleep for long periods while staying registered. Off: it stays ' +
+    'reachable, which uses more battery.',
+  imsi:
+    'International mobile subscriber identity: the subscription id stored on the SIM. The first digits are ' +
+    'the country and operator (MCC-MNC).',
 };
 
 function renderCell() {
@@ -627,6 +650,8 @@ function renderCell() {
         ? [c.op, c.sys, signal?.split(' (')[0]].filter(Boolean).join(' · ')
         : REG_NAMES[c.reg ?? 4] ?? '–';
   const sys = c?.sys === 'NO SERVICE' ? 'No service' : c?.sys;
+  const freq = lte ? lteFrequency(c?.band, c?.channel) : undefined;
+  const data = c?.attached == null ? undefined : c.attached ? 'Attached' : 'Not attached';
   const enb = lte && c?.cellId != null ? ` (base station ${c.cellId >> 8}, sector ${c.cellId & 255})` : '';
   setRows('cell-rows', [
     ['Status', c?.reg != null ? REG_NAMES[c.reg] ?? String(c.reg) : undefined, CELL_HELP.status],
@@ -639,13 +664,41 @@ function renderCell() {
     ['SINR', c?.sinr != null ? `${c.sinr} dB` : undefined, CELL_HELP.sinr],
     ['RSSI', lte && c?.rssi != null ? `${c.rssi.toFixed(0)} dBm` : undefined, CELL_HELP.rssi],
     ['Band', c?.band?.replace('EUTRAN-BAND', 'LTE band '), CELL_HELP.band],
+    ['Frequency', freq, CELL_HELP.freq],
+    ['Bandwidth', c?.bw != null ? `${c.bw / 1000} MHz` : undefined, CELL_HELP.bw],
     ['Channel', c?.channel != null ? String(c.channel) : undefined, CELL_HELP.channel],
     ['Cell', c?.cellId != null ? `${c.cellId}${enb}${c.area ? `, area ${c.area}` : ''}` : undefined, CELL_HELP.cell],
+    ['Physical cell id', c?.pci != null ? String(c.pci) : undefined, CELL_HELP.pci],
+    ['Network mode', c?.mode != null ? MODE_NAMES[c.mode] ?? `Mode ${c.mode}` : undefined, CELL_HELP.mode],
+    ['Mobile data', data, CELL_HELP.data],
+    ['APN', c?.apn, CELL_HELP.apn],
+    ['DNS servers', [c?.dns1, c?.dns2].filter(Boolean).join(', ') || undefined, CELL_HELP.dns],
+    ['Phone number', c?.number, CELL_HELP.number],
+    ['SIM operator', c?.spn, CELL_HELP.spn],
+    ['SMS', c?.smsTotal != null ? `${c.smsUsed ?? 0} of ${c.smsTotal} stored on the SIM` : undefined, CELL_HELP.sms],
+    ['SMS centre', c?.smsc, CELL_HELP.smsc],
+    ['Power saving', c?.psm != null ? (c.psm ? 'On (PSM)' : 'Off') : undefined, CELL_HELP.psm],
     ['Modem temperature', c?.temp != null ? `${c.temp} °C` : undefined, CELL_HELP.temp],
     ['Modem', c?.model ? [c.model, c.fw].filter(Boolean).join(' · ') : undefined],
     ['IMEI', c?.imei, CELL_HELP.imei],
+    ['IMSI', c?.imsi, CELL_HELP.imsi],
     ['SIM number', c?.iccid, CELL_HELP.iccid],
   ]);
+}
+
+const MODE_NAMES: Record<number, string> = { 2: 'Automatic', 13: 'GSM only', 38: 'LTE only', 51: 'GSM and LTE' };
+
+// LTE downlink carrier frequency from band + EARFCN (3GPP TS 36.101):
+// F = F_low + 0.1 × (EARFCN − N_offset).
+const LTE_BANDS: Record<number, [fLow: number, nOffs: number]> = {
+  1: [2110, 0], 3: [1805, 1200], 7: [2620, 2750], 8: [925, 3450],
+  20: [791, 6150], 28: [758, 9210], 38: [2570, 37750], 40: [2300, 38650],
+};
+function lteFrequency(band?: string, earfcn?: number): string | undefined {
+  const n = Number(band?.match(/BAND(\d+)/)?.[1]);
+  const b = LTE_BANDS[n];
+  if (!b || earfcn == null) return undefined;
+  return `${(b[0] + 0.1 * (earfcn - b[1])).toFixed(1)} MHz (downlink)`;
 }
 
 // Collapse the whole panel to its header and status line (per browser).

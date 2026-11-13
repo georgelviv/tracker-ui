@@ -100,6 +100,20 @@ export interface Cell {
   rsrq?: number; // dB
   rssi?: number; // dBm
   sinr?: number; // dB
+  pci?: number; // LTE physical cell id
+  bw?: number; // LTE downlink bandwidth, kHz
+  imsi?: string; // subscriber id on the SIM
+  number?: string; // phone number, if stored on the SIM
+  spn?: string; // operator name stored on the SIM
+  smsc?: string; // SMS centre number
+  smsUsed?: number;
+  smsTotal?: number;
+  mode?: number; // network mode preference (AT+CNMP)
+  psm?: number; // power saving mode: 1 on, 0 off
+  attached?: number; // packet data attach: 1 yes, 0 no
+  apn?: string; // APN as granted by the network
+  dns1?: string;
+  dns2?: string;
 }
 
 // /devices/<id>/status: live health, written every report cycle.
