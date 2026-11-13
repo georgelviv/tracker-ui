@@ -271,13 +271,14 @@ function renderNet(f?: Fix) {
   const net = status?.net ?? f?.net;
   const known = !!(f || status);
   const type = LINK_NAMES[net?.type ?? f?.via ?? ''] ?? f?.via ?? '–';
-  const quality = net?.rssi != null ? wifiQuality(net.rssi) : undefined;
+  const lte = net?.type === 'lte';
+  const quality = net?.rssi != null ? (lte ? rsrpQuality(net.rssi) : wifiQuality(net.rssi)) : undefined;
   const seen = lastSeen();
   $('net-summary').textContent = known ? [type, net?.name, quality].filter(Boolean).join(' · ') : '–';
   setRows('net-rows', [
     ['Type', known ? type : undefined],
     ['Network', net?.name],
-    ['Signal', net?.rssi != null ? `${quality} (${net.rssi} dBm)` : undefined],
+    ['Signal', net?.rssi != null ? `${quality} (${lte ? 'RSRP ' : ''}${net.rssi} dBm)` : undefined],
     ['Channel', net?.channel != null ? String(net.channel) : undefined],
     ['Local IP', net?.ip],
     ['Last check-in', seen ? formatAgo(seen) : undefined],

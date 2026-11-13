@@ -32,7 +32,7 @@ export interface Receiver {
 export interface Net {
   type: 'wifi' | 'lte';
   name?: string; // SSID or operator
-  rssi?: number; // dBm
+  rssi?: number; // Wi-Fi RSSI or LTE RSRP, dBm
   channel?: number;
   ip?: string;
 }
